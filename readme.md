@@ -1,5 +1,5 @@
 /*Chassis beta 
-this version have support deamon to deamon handshake, only give real information to tcp client (diag main app or chassis app)
+this version have support daemon to daemon handshake, only give real information to tcp client (diag main app or chassis app)
 
 you can use chassis app to send group command, or use chassis_client app to send single card's command.
 */
