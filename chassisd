@@ -1,0 +1,147 @@
+#!/bin/sh
+# 
+# Startup script for chassis
+# 
+# This should be customized for distribution standards
+# (using rc_status etc.)
+# The paths are hardcoded and are not automatically adjusted
+# for different prefix
+#
+# chkconfig: 35 50 50
+# description: chassis hardware error logging
+#
+### BEGIN INIT INFO
+# Provides:		chassis 
+# Default-Start:	3 5
+# Default-Stop:		0 1 2 6
+# Short-Description:	chassis hardware error logging
+# Description:          Start the chassis hardware error logging. 
+#                       This logs and handles CPU hardware errors on x86 systems.
+### END INIT INFO
+# pull in sysconfig settings
+#[ -f /etc/sysconfig/chassisd ] && . /etc/sysconfig/chassisd
+
+# Source function library.
+. /etc/init.d/functions
+
+# private settings
+CHASSIS_MODE=daemon
+CHASSIS_OPTIONS=""
+CHASSIS=${CHASSIS:-/usr/local/accton/bin/chassis}
+TRIGGER=/sys/devices/system/machinecheck/machinecheck0/trigger
+LOCKFILE="/var/lock/subsys/chassisd"
+BCMUSER=${BCMUSER:-bcm.user}
+LOCKFILE_2="/tmp/xsocket"
+[ ! -x $CHASSIS ] && ( echo "chassis not found" ; exit 1 )
+#[ ! -r /dev/chassis ] && ( echo "/dev/chassis not active" ; exit 0 )
+
+case "$CHASSIS_MODE" in
+daemon)
+	;;
+trigger)
+	;;
+cron)
+	echo "chassis not started"
+	exit 0
+	;;
+*)
+	echo "Unknown chassis mode $CHASSIS_MODE. Valid daemon/trigger/cron"
+	exit 1
+esac
+
+case "$1" in
+start)
+	if [ -f $LOCKFILE ]; then
+		exit 0
+	fi
+
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "Starting chassis daemon"
+		daemon $CHASSIS --daemon $CHASSIS_OPTIONS
+		touch $LOCKFILE
+	elif [ -f "$TRIGGER" ] ; then
+		echo $CHASSIS > "$TRIGGER"
+		touch $LOCKFILE
+	else
+		echo No machine check capability
+	fi
+	;;
+stop)
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "Stopping chassis"
+		killproc $BCMUSER -TERM
+		rm -f $LOCKFILE_2
+		killproc $CHASSIS -TERM
+		rm -f $LOCKFILE
+	elif [ "$CHASSIS_MODE" = "trigger" -a -f "$TRIGGER" ]; then 
+		echo "" > "$TRIGGER"
+		rm -f $LOCKFILE
+	else
+		echo chassis not running
+	fi
+	;;
+burn-in)
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "chassis to burn-in state"
+		killproc $CHASSIS -USR1
+	else
+		echo chassis not running
+	fi
+	;;
+normal)
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "chassis to normal state"
+		killproc $CHASSIS -USR2
+	else
+		echo chassis not running
+	fi
+	;;
+ready-ping)
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "chassis ready to ping"
+		killproc $CHASSIS -RTMIN
+	else
+		echo chassis not running
+	fi
+	;;
+left-ping)
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "chassis left ping"
+		killproc $CHASSIS -RTMIN+1
+	else
+		echo chassis not running
+	fi
+	;;
+ready-power)
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "chassis ready to power cycle"
+		killproc $CHASSIS -RTMIN+2
+	else
+		echo chassis not running
+	fi
+	;;
+try-restart)
+	$0 status > /dev/null && $0 restart
+	;;
+restart)
+	$0 stop
+	$0 start
+	;;
+reload)
+	$0 try-restart
+	;;
+force-reload)
+	$0 try-restart
+	;;
+status)
+	if [ "$CHASSIS_MODE" = "daemon" ] ; then
+		echo "Checking for chassis"
+		status $CHASSIS
+	fi
+	;;
+*)
+	echo "Usage: $0 {start|stop|try-restart|restart|status|force-reload|reload}"
+	exit 1
+esac
+
+

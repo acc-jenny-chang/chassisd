@@ -1,0 +1,59 @@
+[root@Wedge-FB tcp_client]# ./a.out 192.168.1.1 1
+
+Try to connect!
+
+Connected!
+tcp_ping_command.header.magic:64507
+tcp_ping_command.header.length:9
+tcp_ping_command.header.uSnumber:2
+tcp_ping_command.header.commandID:10109
+tcp_ping_command.header.externalMode:2
+tcp_ping_command.payload:0
+tcp_ping_command.csum:119
+tcp_ping_reply.header.magic:64507
+tcp_ping_reply.header.length:9
+tcp_ping_reply.header.uSnumber:2
+tcp_ping_reply.header.commandID:20109
+tcp_ping_reply.header.externalMode:2
+tcp_ping_reply.payload:0
+tcp_ping_reply.csum:159
+[root@Wedge-FB tcp_client]# ./a.out 192.168.1.1 2
+
+Try to connect!
+
+Connected!
+tcp_power_command.header.magic:64507
+tcp_power_command.header.length:9
+tcp_power_command.header.uSnumber:2
+tcp_power_command.header.commandID:10110
+tcp_power_command.header.externalMode:2
+tcp_power_command.payload:0
+tcp_power_command.csum:12
+^[[Atcp_power_reply.header.magic:64507
+tcp_power_reply.header.length:9
+tcp_power_reply.header.uSnumber:2
+tcp_power_reply.header.commandID:20110
+tcp_power_reply.header.externalMode:2
+tcp_power_reply.payload:0
+tcp_power_reply.csum:228
+[root@Wedge-FB tcp_client]# ./a.out 192.168.1.1 3
+
+Try to connect!
+
+Connected!
+tcp_hw_command.header.magic:64507
+tcp_hw_command.header.length:9
+tcp_hw_command.header.uSnumber:1
+tcp_hw_command.header.commandID:10054
+tcp_hw_command.header.externalMode:2
+tcp_hw_command.csum:232
+tcp_hw_reply.header.magic:64507
+tcp_hw_reply.header.length:4135
+tcp_hw_reply.header.uSnumber:1
+tcp_hw_reply.header.commandID:20054
+tcp_hw_reply.header.externalMode:2
+tcp_hw_reply.csum:235
+[root@Wedge-FB tcp_client]#
+
+
+=========================================================
