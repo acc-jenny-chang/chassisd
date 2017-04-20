@@ -158,7 +158,7 @@ enum port_state{
 
 
 /*original backplane*/
-#if (BACKPLANE_VERSION>1)
+#if (BACKPLANE_VERSION>=1)
 enum port_5396_id{
     PORT_16_C1=14,
     PORT_16_C2=15,
