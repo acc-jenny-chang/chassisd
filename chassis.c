@@ -82,6 +82,8 @@ static int bpdu_sock;
 static void modifier_finish(void);
 static void setup_pidfile(char *s);*/
 
+int chassis_validate_vlan_conifg(void);
+int chassis_diag_initial_testing(int diag_item);
 int chassis_initial_ip(void);
 int chassis_initial_topology(void);
 int chassis_initial_default_topology(void);
@@ -112,6 +114,8 @@ static void chassis_remove_pidfile(void)
 
 static void chassis_signal_exit(int sig)
 {
+    /* Enter Block status*/
+    chassis_bpdu_enter_block(&(chassis_information.ctpm));
     /*close tcp and udp socket*/
     udp_client_close_socket();
     upd_server_close(udp_sock);
@@ -361,7 +365,7 @@ static int chassis_parse_config_file(const char *fn)
                     }
                     else if(strcmp(name,"internal_untag_vlan")==0)
                     {
-                        chassis_information.inetrnal_untag_vlan = atoi(val);  
+                        chassis_information.internal_untag_vlan = atoi(val);  
                     }
 		} else if (!chassis_empty(s)) {
 			chassis_parse_error(lineno, "config file line not field nor header");
@@ -393,6 +397,261 @@ static int chassis_parse_config_file(const char *fn)
 	chassis_bpdu_initial(&chassis_information.ctpm,chassis_information.us_card_number,chassis_information.topology_type);
 	return 0;
 }
+
+static int chassis_parse_bcm5396_value(char* value_string)
+{
+    int ret_value = 0;
+    char* val=NULL;
+
+    val = strchr(value_string, 'x');
+
+    if(val!=0)
+        val =val+1;
+    else return -1;
+    
+    ret_value = strtol(val, NULL, 16);
+    /*printf("parse value = %s: %d \n\r  ", val, ret_value);*/
+
+    return ret_value;
+}
+
+static int chassis_validate_vlan_group(void)
+{
+    int ret_value = DIAG_STATUS_SUCCESS;
+    int ret = -1;
+    int i;
+    char buffer[MAXIMUM_BUFFER_LENGTH]= {0},buf[MAXIMUM_BUFFER_LENGTH]={0};
+    //char internal_tag_vlan[]={0x0, 0x0, 0x0, 0x0, 0x0, 0x7f, 0x7f, 0xc1};
+    //char internal_untag_vlan[]={0x0, 0x0, 0x0, 0xff, 0xff, 0xff, 0xff, 0xc1};
+    
+    if (chassis_diag_function_delete_temporary_file() != 0)
+            return -99;
+        
+    memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+    sprintf(buffer, "\
+        bcm5396 -w 0x61 -p 0x5 -l 2 -v 0x00%x;\
+        bcm5396 -w 0x60 -p 0x5 -l 1 -v 0x81;\
+        bcm5396 -r 0x63 -p 0x5 -l 8 | grep Data | awk '{print $3 $4 \" \" $5 \" \" $6\
+        \" \" $7 \" \" $8 \" \" $9 \" \" $10 \" \" $11}' > %s", 
+        chassis_information.internal_tag_vlan, 
+        DIAG_DEFAULT_INFORMATIN_FILE);
+    ret = system(buffer);
+    if (ret != 0)
+    {
+        printf("Get VLAN GROUP config (%d): Error!\r\n", ret);
+        fflush(stdout);
+        return ret;
+    }
+    //printf("cat /tmp/.accton_diag_test_message.txt"); 
+    system("cat /tmp/.accton_diag_test_message.txt");
+    
+    printf("Tag VLAN %d :",  chassis_information.internal_tag_vlan);
+    for(i=0;i<8;i++)
+    {
+        ret = tcp_server_diag_function_search_string(DIAG_DEFAULT_INFORMATIN_FILE, " ", buf, MAXIMUM_BUFFER_LENGTH, 1, i+1);
+        if (ret!= 0)
+        {
+            printf("chassisd initial ip address fail(-2.1.%d)!\n\r",i);
+            return -2;
+        }     
+        printf(" %s",buf);
+    }
+
+    
+    memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+    sprintf(buffer, "\
+        bcm5396 -w 0x61 -p 0x5 -l 2 -v 0x00%x;\
+        bcm5396 -w 0x60 -p 0x5 -l 1 -v 0x81;\
+        bcm5396 -r 0x63 -p 0x5 -l 8 | grep Data | awk '{print $3 $4 \" \" $5 \" \" $6\
+        \" \" $7 \" \" $8 \" \" $9 \" \" $10 \" \" $11}' > %s", 
+        chassis_information.internal_untag_vlan, 
+        DIAG_DEFAULT_INFORMATIN_FILE);
+    ret = system(buffer);
+    if (ret != 0)
+    {
+        printf("Get VLAN GROUP config (%d): Error!\r\n", ret);
+        fflush(stdout);
+        return ret;
+    }
+    //printf("cat /tmp/.accton_diag_test_message.txt"); 
+    system("cat /tmp/.accton_diag_test_message.txt");
+    printf("Untag VLAN %d :",  chassis_information.internal_untag_vlan);
+    for(i=0;i<8;i++)
+    {
+        ret = tcp_server_diag_function_search_string(DIAG_DEFAULT_INFORMATIN_FILE, " ", buf, MAXIMUM_BUFFER_LENGTH, 1, i+1);
+        if (ret!= 0)
+        {
+            printf("chassisd initial ip address fail(-2.2.%d)!\n\r",i);
+            return -2;
+        }     
+        printf(" %s",buf);
+    }    
+/*
+    sprintf(buffer, "\
+        bcm5396 -w 0x61 -p 0x5 -l 2 -v 0x00%x;\
+        bcm5396 -w 0x63 -p 0x5 -l 8 -v 00000000007f7fc1;\
+        bcm5396 -w 0x60 -p 0x5 -l 1 -v 0x80;\
+        bcm5396 -w 0x61 -p 0x5 -l 2 -v 0x00%x;\
+        bcm5396 -w 0x63 -p 0x5 -l 8 -v 000000ffffffffc1;\
+        bcm5396 -w 0x60 -p 0x5 -l 1 -v 0x80;",
+        chassis_information.internal_tag_vlan,
+        chassis_information.internal_untag_vlan);
+    ret = system(buffer);
+    if (ret != 0)
+    {
+        printf("Initial VLAN GROUP config (%d): Error!\r\n", ret);
+        fflush(stdout);
+        return ret;
+    }
+*/    
+    printf("Get VLAN GROUP config (%d): SUCCESS!\r\n", ret);
+    return ret_value;
+}
+
+int chassis_validate_vlan_conifg(void)
+{
+    int us_number = chassis_information.us_card_number;
+    char buffer[MAXIMUM_BUFFER_LENGTH]= {0},buf[MAXIMUM_BUFFER_LENGTH]={0};
+    int ret_value = DIAG_STATUS_SUCCESS;
+    int ret = -1;
+    int i,j;
+    int bcm_value=0;
+    
+    /* MAMANGEMENT VLAN IP */
+    printf("Diagnostic VLAN IP Setting..\r\n");
+
+
+    if (chassis_diag_function_delete_temporary_file() != 0)
+        return -99;
+        
+    memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+    sprintf(buffer,"ifconfig "DEFAULT_MGMT".%d",
+         chassis_information.internal_tag_vlan);
+    
+    ret = system(buffer);
+    if (ret != 0)
+    {
+        printf("Get IP address to network devices of Avoton are failed(%d).\r\n", ret);
+        fflush(stdout);
+        return -5;
+    }
+
+    memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+    sprintf(buffer,"ifconfig "DEFAULT_MGMT".%d | grep \'inet addr:\' > %s", chassis_information.internal_tag_vlan, DIAG_DEFAULT_INFORMATIN_FILE);
+    system(buffer);
+    ret = tcp_server_diag_function_search_string(DIAG_DEFAULT_INFORMATIN_FILE, " ", buf, MAXIMUM_BUFFER_LENGTH, 1, 2);
+    if (ret!= 0)
+    {
+            printf("chassisd initial ip address fail(-3.1)!\n\r");
+            return -3;
+    }     
+    memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+    sprintf(buffer,"%d.%d.%d.%d",
+        chassis_information.us_card[us_number-1].ipaddress[0],
+        chassis_information.us_card[us_number-1].ipaddress[1],
+        chassis_information.us_card[us_number-1].ipaddress[2],
+        chassis_information.us_card[us_number-1].ipaddress[3]);    
+    printf("The managment %s, expected addr is %s .\n\r",buf,buffer);
+    if(strstr(buf,buffer)==0)
+    {
+        printf("chassisd initial ip address fail(-3.2)!\n\r");
+        return -3;        
+    }
+    printf("Diagnostic VLAN IP Setting Success\n\r");
+
+    if((us_number<33&& us_number>0)||(us_number%2==0))
+    {
+        return DIAG_STATUS_SUCCESS;
+    }
+    
+    /* VLAN GROUP CONFIGURATION */
+    printf("Diagnostic VLAN group Setting..\n\r");
+    if(chassis_validate_vlan_group()!=0)
+    {
+        printf("chassisd initial ip address fail(-2)!\n\r");
+        return -2;
+    }
+    printf("Diagnostic VLAN group Setting Success\n\r");
+
+    
+    /* PVID */
+    printf("Diagnostic PVID ..\n\r");
+    for (i = 0x10,j=0;i<0x30;i=i+2,j=j+1)
+    {
+        if (chassis_diag_function_delete_temporary_file() != 0)
+            return -99;
+        
+        memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+        sprintf(buffer,"bcm5396 -r 0x%x -p 0x34 -l 2 | grep Data | awk '{print $3 $4 \" \" $5}' > %s", i, DIAG_DEFAULT_INFORMATIN_FILE);
+        system(buffer);
+        //system("cat /tmp/.accton_diag_test_message.txt");        
+        ret = tcp_server_diag_function_search_string(DIAG_DEFAULT_INFORMATIN_FILE, " ", buf, MAXIMUM_BUFFER_LENGTH, 1, 1);
+        if (ret!= 0)
+        {
+            printf("chassisd initial ip address fail(-3.1)!\n\r");
+            return -3;
+        }        
+        bcm_value= chassis_parse_bcm5396_value(buf)*256;
+        ret = tcp_server_diag_function_search_string(DIAG_DEFAULT_INFORMATIN_FILE, " ", buf, MAXIMUM_BUFFER_LENGTH, 1, 2);
+        if (ret!= 0)
+        {
+            printf("chassisd initial ip address fail(-3.2)!\n\r");
+            return -3;
+        }        
+        bcm_value += chassis_parse_bcm5396_value(buf);
+        
+        printf("Port %2d PVID : %d\n\r",j, bcm_value);
+        if(bcm_value!=chassis_information.internal_untag_vlan)
+        {
+            printf("chassisd initial ip address fail(-3.3)!\n\r");
+            return -3;
+        }
+    }
+    printf("Diagnostic PVID SUCCESS.\n\r");      
+    /* VLAN STATUS */
+    printf("Diagnostic VLAN enable..\n\r");
+    memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+    sprintf(buffer, "bcm5396 -r 0x0 -p 0x34  | grep Data | awk '{print $3 $4 \" \" $5}' > %s", DIAG_DEFAULT_INFORMATIN_FILE_1);
+    system(buffer);
+    ret = tcp_server_diag_function_search_string(DIAG_DEFAULT_INFORMATIN_FILE_1, " ", buf, MAXIMUM_BUFFER_LENGTH, 1, 1);
+    if (ret!= 0)
+    {
+        printf("chassisd initial ip address fail(-4)!\n\r");
+        return -4;
+    }
+    bcm_value = chassis_parse_bcm5396_value(buf);
+    
+    printf("VLAN status : %s\n\r",bcm_value&0x80?"Enable":"Disable");
+    if((bcm_value&0x80)==0x0)
+    {
+        printf("chassisd initial ip address fail(-5)!\n\r");
+        return -5;        
+    }
+    printf("Diagnostic VLAN ENABLE SUCCESS.\n\r");
+    
+    return ret_value;
+}
+
+int chassis_diag_initial_testing(int diag_item)
+{
+    int ret = DIAG_STATUS_SUCCESS;
+    switch (diag_item)
+    {
+        case  VLAN_ITEM:
+            ret=chassis_validate_vlan_conifg();
+            break;
+        case TOPOLOGY_ITEM:
+            break;
+        case ALL_ITEM:
+            break;
+        default:
+            return DIAG_STATUS_FAILURE;
+            
+    }
+
+    return ret;
+}
+    
 
 int chassis_initial_ip(void)
 {
@@ -437,20 +696,10 @@ int chassis_initial_ip(void)
 
     printf("chassisd initial ip address success!\n\r");
 
-#if 0
-
-    //memset(DEFAULT_INTERFACE,0,INTERFACE_NAME_LENGTH);
- #if(VLAN_INTERNAL_INTERFACE >0)
-    sprintf(DEFAULT_INTERFACE,DEFAULT_MGMT":%d",chassis_information.internal_tag_vlan);
- #else
-    sprintf(DEFAULT_INTERFACE,DEFAULT_MGMT".%d",chassis_information.internal_tag_vlan);
- #endif
- #endif
- 
 #if(VLAN_INTERNAL_INTERFACE >0)
 
     //printf("chassisd internal tag vlan :%d %x!\n\r",chassis_information.internal_tag_vlan,chassis_information.internal_tag_vlan);
-    //printf("chassisd internal untag vlan :%d %x!\n\r",chassis_information.inetrnal_untag_vlan,chassis_information.inetrnal_untag_vlan);
+    //printf("chassisd internal untag vlan :%d %x!\n\r",chassis_information.internal_untag_vlan,chassis_information.internal_untag_vlan);
     
     if(us_number>=33&& us_number<=48&&us_number%2==1){
         memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
@@ -462,7 +711,7 @@ bcm5396 -w 0x61 -p 0x5 -l 2 -v 0x00%x;\
 bcm5396 -w 0x63 -p 0x5 -l 8 -v 000000ffffffffc1;\
 bcm5396 -w 0x60 -p 0x5 -l 1 -v 0x80;",
                         chassis_information.internal_tag_vlan,
-                        chassis_information.inetrnal_untag_vlan);
+                        chassis_information.internal_untag_vlan);
         ret = system(buffer);
         if (ret != 0)
         {
@@ -481,14 +730,14 @@ bcm5396 -w 0x18 -p 0x34 -l 2 -v 0x00%x;\
 bcm5396 -w 0x1a -p 0x34 -l 2 -v 0x00%x;\
 bcm5396 -w 0x1c -p 0x34 -l 2 -v 0x00%x;\
 bcm5396 -w 0x1e -p 0x34 -l 2 -v 0x00%x;",
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan);
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan);
          ret = system(buffer);        
         if (ret != 0)
         {
@@ -507,14 +756,14 @@ bcm5396 -w 0x28 -p 0x34 -l 2 -v 0x00%x;\
 bcm5396 -w 0x2a -p 0x34 -l 2 -v 0x00%x;\
 bcm5396 -w 0x2c -p 0x34 -l 2 -v 0x00%x;\
 bcm5396 -w 0x2e -p 0x34 -l 2 -v 0x00%x;",
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan,
-                        chassis_information.inetrnal_untag_vlan);
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan);
                         //bcm5396 -w 0x30 -p 0x34 -l 2 -v 0x00%x;");
         ret = system(buffer);        
         if (ret != 0)
@@ -531,6 +780,12 @@ bcm5396 -w 0x2e -p 0x34 -l 2 -v 0x00%x;",
         {
             printf("Initial VLAN config (%d): Error!\r\n", ret);
             fflush(stdout);
+            return ret;
+        }
+        printf("chassisd diagnostic vlan setting...\n\r");
+        if((ret=chassis_validate_vlan_conifg())!=0)
+        {
+            printf("chassisd initial vlan failure!\n\r");
             return ret;
         }
        
@@ -994,13 +1249,15 @@ int chassis_initial_default_topology(void)
             chassis_add_static_arl(us_number);
             chassis_config_multicast(us_number);
         }
-
+        /*
         chassis_config_port(PORT_BLOCKING, PORT_8_FC0);
         chassis_config_port(PORT_BLOCKING, PORT_8_FC1);
         chassis_config_port(PORT_BLOCKING, PORT_8_FC2);
         chassis_config_port(PORT_BLOCKING, PORT_8_FC3);
+        */
         chassis_config_port(PORT_FORWARDING, PORT_8_C1);
         chassis_config_port(PORT_FORWARDING, PORT_8_C2);
+        chassis_bpdu_enter_block(&(chassis_information.ctpm));
     }
     else
     {
@@ -1013,6 +1270,7 @@ int chassis_initial_default_topology(void)
             chassis_add_static_arl(us_number);
             chassis_config_multicast(us_number);
         }
+        /*
         chassis_config_port(PORT_FORWARDING, PORT_16_LC0);
         chassis_config_port(PORT_FORWARDING, PORT_16_LC1);
         chassis_config_port(PORT_FORWARDING, PORT_16_LC2);
@@ -1022,9 +1280,11 @@ int chassis_initial_default_topology(void)
         chassis_config_port(PORT_FORWARDING, PORT_16_LC6);
         chassis_config_port(PORT_FORWARDING, PORT_16_LC7);
         chassis_config_port(PORT_FORWARDING, PORT_16_FC);
+        */
         chassis_config_port(PORT_FORWARDING, PORT_16_RJ45);
         chassis_config_port(PORT_FORWARDING, PORT_16_C1);
         chassis_config_port(PORT_FORWARDING, PORT_16_C2);
+        chassis_bpdu_enter_block(&(chassis_information.ctpm));
     }
 
 
@@ -1036,9 +1296,7 @@ int chassis_initial_topology(void)
 {
 
     int us_number = chassis_information.us_card_number;
-
-    chassis_initial_spi();
-    
+   
     chassis_initial_default_topology();
     
     /*Topology is static */    
@@ -1332,6 +1590,9 @@ int main(int argc, char **_argv)
 
     	TST(netif_utils_netsock_init() == 0, -1);
 
+        /* initial SPI first, need use SPI to control bcm5396/bcm5389 */
+        chassis_initial_spi();
+        
         /*initial slot id from hardware by i2c*/
         chassis_set_us_card_number_of_switch_board();
         
@@ -1339,7 +1600,11 @@ int main(int argc, char **_argv)
         chassis_parse_config_file(CONFIG_FILENAME);
       
         /* Initial IP Address */
-        chassis_initial_ip();
+        if(chassis_initial_ip()!=0)
+        {
+            printf("Exit Chassis daemon \n\r");
+            exit(1);
+        }
 
         /* Initial Topology */
         chassis_initial_topology();        

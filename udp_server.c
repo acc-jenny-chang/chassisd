@@ -60,7 +60,7 @@ static struct epoll_event_handler packet_event;
 
 extern CHASSIS_DATA_T chassis_information;
 extern US_HW_DATA_T us_hw_information[MAXIMUM_MICRO_SERVER_CARD_NUMBER];
-extern int  tcp_server_doShutdownToClinet(int  slotid, int option);
+extern int  tcp_server_do_shutdown_to_client(int  slotid, int option);
 
 static uint16_t last_payload;
 

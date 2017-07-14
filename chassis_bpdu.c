@@ -89,6 +89,87 @@ void chassis_bpdu_clear_root_fc(CTPM_T*  this);
 void chassis_bpdu_clear_designed_lc(CTPM_T*  this);
 void chassis_bpdu_info_bpdu_flag(unsigned char* flags,unsigned char bpdu_type);
 
+int chassis_bpdu_lc_sync_to_hello(RSTP_BPDU_T* bpdu);
+
+int chassis_bpdu_check_rx_bpdu_interval(RSTP_BPDU_T* bpdu);
+int chassis_bpdu_search_rx_bpdu_interval(unsigned int slotid, unsigned char type);
+int chassis_bpdu_update_rx_bpdu_interval(unsigned int slotid, unsigned char type);
+void chassis_bpdu_clear_rx_bpdu_interval(void);
+
+int chassis_bpdu_root_lc(void);
+
+typedef struct rx_header_t {
+    unsigned int slotid;
+    unsigned char type;
+    unsigned int count;
+} RX_HEADER_T;
+
+RX_HEADER_T rx_bpdu[MAXIMUM_BPDU_INTERVAL_SIZE];
+
+int chassis_bpdu_search_rx_bpdu_interval(unsigned int slotid, unsigned char type)
+{
+    int i;
+    
+    for(i=0;i<MAXIMUM_BPDU_INTERVAL_SIZE;i++)
+    {
+        if((rx_bpdu[i].slotid==slotid)&&(rx_bpdu[i].type==type))
+        {
+            return 1;
+        }
+
+        if(rx_bpdu[i].slotid==0) return 0;
+    }
+    return 2;
+}
+
+int chassis_bpdu_update_rx_bpdu_interval(unsigned int slotid, unsigned char type)
+{
+    int i=0;
+    
+    for(i=0;i<MAXIMUM_BPDU_INTERVAL_SIZE;i++)
+    {
+        if(rx_bpdu[i].slotid==0)
+        {
+            rx_bpdu[i].slotid = slotid;
+            rx_bpdu[i].type = type;
+            rx_bpdu[i].count = 1;
+            return 0;
+        }
+    }
+
+    /*buffer is full*/
+    return 1;
+}
+
+void chassis_bpdu_clear_rx_bpdu_interval(void)
+{
+    memset(rx_bpdu, 0, sizeof(RX_HEADER_T)*MAXIMUM_BPDU_INTERVAL_SIZE);
+
+    return;
+}
+
+int chassis_bpdu_check_rx_bpdu_interval(RSTP_BPDU_T* bpdu)
+{
+    int ret = 0;
+    RSTP_BPDU_T* bpdu_t = bpdu;
+    unsigned int slotid = bpdu_t->body.port_id[1];
+    unsigned char type = bpdu_t->hdr.bpdu_type;
+
+    if(chassis_bpdu_search_rx_bpdu_interval(slotid,type)==0)
+    {
+        chassis_bpdu_update_rx_bpdu_interval(slotid,type);
+    }
+    else ret = 1;
+    
+    return ret;
+}
+
+int chassis_bpdu_root_lc(void)
+{
+    return chassis_information.ctpm.rootLCPortId;
+}
+    
+
 int
 chassis_bpdu_compare_times (TIMEVALUES_T *t1,  TIMEVALUES_T *t2)
 {
@@ -311,7 +392,7 @@ int chassis_bpdu_in_update_lc_root(RSTP_BPDU_T* bpdu)
     CTPM_T* ctpm = &chassis_information.ctpm;
     unsigned long root_path_cost;
 
-    if(root_id>0)
+    if((root_id>0)&&(bpdu->chassis_exist[root_id-1]>0))
     {
         if((root_id<ctpm->rootPortId)||(ctpm->rootPortId==0))
         {
@@ -322,7 +403,7 @@ int chassis_bpdu_in_update_lc_root(RSTP_BPDU_T* bpdu)
             memcpy(&ctpm->rootPrio.root_bridge,&bpdu->body.root_id,8);         
         }
     }
-    if(dbridge_id>0)
+    if((dbridge_id>0)&&(bpdu->chassis_exist[dbridge_id-1]>0))
     {
         if((bpdu->hdr.bpdu_type==BPDU_TYPE_HELLO)||(dbridge_id<ctpm->rootLCPortId)||(ctpm->rootLCPortId==0))
         {
@@ -337,6 +418,31 @@ int chassis_bpdu_in_update_lc_root(RSTP_BPDU_T* bpdu)
     return 0;
 }
 
+int chassis_bpdu_lc_sync_to_hello(RSTP_BPDU_T* bpdu)
+{
+    RSTP_BPDU_T* bpdu_t = bpdu;
+    //unsigned int root_id=bpdu_t->body.root_id[1];
+    unsigned int dbridge_id=bpdu_t->body.bridge_id[1];
+    CTPM_T* ctpm = &chassis_information.ctpm;
+    unsigned short ori_dbridge_id=htons(ctpm->rootPrio.design_bridge.prio)&0x00FF;
+    unsigned int ori_root_lc = ctpm->rootLCPortId;
+    /* If Hello packet's Root LC is not My record, it shall try to update*/
+    if((dbridge_id>0 &&dbridge_id!=ori_dbridge_id)&&(bpdu->chassis_exist[dbridge_id-1]>0))
+    {   
+        ctpm->rootLCPortId = dbridge_id;
+        ctpm->rootPrio.design_port= dbridge_id;        
+        memcpy(&ctpm->rootPrio.design_bridge,&bpdu->body.bridge_id,8);
+        
+        /*If I am root LC previous and i'm not now, i need to change forwarding */
+        if(ori_root_lc==ori_dbridge_id)
+        {
+            chassis_bpdu_enter_forwarding(ctpm);
+        }
+    }
+
+    return 0;
+}
+
 int chassis_bpdu_in_update_fc_designated(RSTP_BPDU_T* bpdu)
 {
     RSTP_BPDU_T* bpdu_t = bpdu;
@@ -346,9 +452,9 @@ int chassis_bpdu_in_update_fc_designated(RSTP_BPDU_T* bpdu)
     unsigned long root_path_cost;
     unsigned char forwarding = ((bpdu_t->body.flags&0x20))>>5;
 
-    if(root_id>0)
+    if((root_id>0)&&(bpdu->chassis_exist[root_id-1]>0))
     {
-        if(forwarding==1||(root_id<ctpm->rootPortId)||(ctpm->rootPortId==0))
+        if((forwarding==1)||(root_id<ctpm->rootPortId)||(ctpm->rootPortId==0))
         {
             ctpm->rootPortId = root_id;
             ctpm->rootPrio.bridge_port = root_id;
@@ -357,7 +463,7 @@ int chassis_bpdu_in_update_fc_designated(RSTP_BPDU_T* bpdu)
             memcpy(&ctpm->rootPrio.root_bridge,&bpdu->body.root_id,8);       
         }
     }
-    if(dbridge_id>0)
+    if((dbridge_id>0)&&(bpdu->chassis_exist[dbridge_id-1]>0))
     {
         if((dbridge_id<ctpm->rootLCPortId)||(ctpm->rootLCPortId==0))
         {
@@ -432,6 +538,7 @@ int chassis_bpdu_in_rx_fc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
                 ori_dbridge_id=htons(ctpm->BrId.prio)&0x00FF;
                 if((ctpm->rootLCPortId!=ori_dbridge_id)&&(ctpm->chassis_exist[ori_dbridge_id]>=1)) ctpm->chassis_exist[ctpm->rootLCPortId]=0;
                 chassis_bpdu_enter_block(ctpm);
+                //usleep(DEFAULT_INTERVAL_TIME*5*chassis_information.us_card_number/2);
                 return 0;
             }
            chassis_bpdu_in_update_chassis_member(bpdu,ctpm);
@@ -442,9 +549,17 @@ int chassis_bpdu_in_rx_fc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
                 ori_dbridge_id=htons(ctpm->BrId.prio)&0x00FF;
                 root_id=bpdu_t->body.root_id[1];
                 ori_root_id=htons(ctpm->rootPrio.root_bridge.prio)&0x00FF;
+
+                /* I am Designated LC, but incoming bpdu have new Designated LC, change me to backup*/    
+                if (root_id==ori_root_id&&dbridge_id!=ctpm->rootLCPortId)
+                {
+                    chassis_bpdu_lc_sync_to_hello(bpdu_t);
+                }                
                 /* I am Designated LC, receive Hello packet from Root FC and forwarding HELLO packet to Other FCs*/
-                if(dbridge_id==ori_dbridge_id&& root_id==ori_root_id&&slotid==root_id)
+                else if(dbridge_id==ori_dbridge_id&& root_id==ori_root_id&&slotid==root_id)
+                {
                     chassis_bpdu_tx_info_bpdu(BPDU_TYPE_HELLO);
+                }
                 else
                     chassis_bpdu_tx_info_bpdu(BPDU_TYPE_REPLY);
             }
@@ -506,7 +621,7 @@ int chassis_bpdu_in_rx_lc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
                 /* I am backup FC, receive Hello packet from Designated LC and Reply HELLO packet to LC, let it know i am exist*/
                 if(dbridge_id==ori_dbridge_id&& root_id!=my_id){
 #ifdef PACKET_DEBUG                    
-                    printf("I am designed fc, reply hello packet :%d,%d,%d,%d",dbridge_id,ori_dbridge_id,root_id,my_id);
+                    printf("I am backup fc, reply hello packet :%d,%d,%d,%d",dbridge_id,ori_dbridge_id,root_id,my_id);
 #endif
                     chassis_bpdu_tx_info_bpdu(BPDU_TYPE_HELLO);
                     }
@@ -529,10 +644,15 @@ int chassis_bpdu_in_rx_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, unsi
     int ret =0;
     RSTP_BPDU_T* bpdu_t = bpdu;
     unsigned int slotid=bpdu_t->body.port_id[1];
+//    unsigned char type = bpdu_t->hdr.bpdu_type;
 
     /*if CPU is B, don't support */
     if(chassis_information.us_card_number%2==0) return 0;
 
+    if(chassis_bpdu_check_rx_bpdu_interval(bpdu)==1) return 0;
+
+    //printf("Receive Src ifindex %d %d\n\r",slotid, type);
+    
     if(33<=slotid&&slotid<=48)
     {
         return chassis_bpdu_in_rx_fc_bpdu(vlan_id,port_index,bpdu,len);
@@ -692,9 +812,9 @@ chassis_bpdu_tx_info_bpdu(unsigned char bpdu_type)
     
     memcpy(sendline,&bpdu_t,size);
     bpdu_client_send(mac,sendline,size);
-#ifdef PACKET_DEBUG
-    printf("bpdu_client_send, bpdu type = %d, state=%d\n\r",bpdu_type,ctpm->state);
-#endif
+
+    DEBUG_PRINT("bpdu_client_send, bpdu type = %d, state=%d\n\r",bpdu_type,ctpm->state);
+
     return;
 }
 
@@ -1196,8 +1316,10 @@ static int chassis_bpdu_ctp_ctpm_iterate_machines (CTPM_T* this)
 {
     int us_number = chassis_information.us_card_number;
 
-  switch (this->state)
-  {
+    chassis_bpdu_clear_rx_bpdu_interval();
+        
+    switch (this->state)
+    {
        case STATE_BLOCK:
             if(33<=us_number&&us_number<=48)
                 chassis_bpdu_tx_info_bpdu(BPDU_TYPE_CONFIG);
@@ -1215,12 +1337,29 @@ static int chassis_bpdu_ctp_ctpm_iterate_machines (CTPM_T* this)
             }
             break;
        case STATE_LEARNING:
-            if(this->timeSince_Topo_Change<Default_ForwardDelay){
-                chassis_bpdu_tx_info_bpdu(BPDU_TYPE_CONFIG);
-                this->timeSince_Topo_Change++;
-             }
+            if(33<=us_number&&us_number<=48)
+            {
+                if(this->timeSince_Topo_Change<Default_ForwardDelay){
+                    chassis_bpdu_tx_info_bpdu(BPDU_TYPE_CONFIG);
+                    this->timeSince_Topo_Change++;
+                }                
+                else
+                {
+                    chassis_bpdu_enter_forwarding(this);
+                }
+            }
+            /* LC need wait FC enter forwarding first, let backup FC block ports*/
             else
-                chassis_bpdu_enter_forwarding(this);
+            {
+                if(this->timeSince_Topo_Change<(Default_ForwardDelay*2+1)){
+                    chassis_bpdu_tx_info_bpdu(BPDU_TYPE_CONFIG);
+                    this->timeSince_Topo_Change++;
+                }                
+                else
+                {
+                    chassis_bpdu_enter_forwarding(this);
+                }
+            }
             break;
        case STATE_FORWARDING:
             if(us_number==this->rootPortId)

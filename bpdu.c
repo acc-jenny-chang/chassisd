@@ -185,14 +185,15 @@ static void bpdu_packet_rcv(uint32_t events, struct epoll_event_handler *h)
               DEBUG_PRINT("(%s:%d) cc:%d\n\r",__FUNCTION__,__LINE__,cc);
 		return;
 	}
-#ifdef DEBUG_MODE
+
+    
 	DEBUG_PRINT("Receive Src ifindex %d %02x:%02x:%02x:%02x:%02x:%02x\n\r",
 	       sl.sll_ifindex, 
 	       sl.sll_addr[0], sl.sll_addr[1], sl.sll_addr[2],
 	       sl.sll_addr[3], sl.sll_addr[4], sl.sll_addr[5]);
-    if(sl.sll_addr[3]==0x22&&sl.sll_addr[4]==0x22&&(sl.sll_addr[5]==0x39||sl.sll_addr[5]==0x25))
-	bpdu_dump_packet(buf, cc);
-#endif
+    /**if(sl.sll_addr[3]==0x22&&sl.sll_addr[4]==0x22&&(sl.sll_addr[5]==0x39||sl.sll_addr[5]==0x25))
+	bpdu_dump_packet(buf, cc);**/
+
 
 	chassis_bpdu_rx_bpdu(sl.sll_ifindex, buf, cc);
 }
@@ -229,7 +230,7 @@ int bpdu_initial_socket(void)
     sprintf(vlan_if,"%s.%d",DEFAULT_IF,chassis_information.internal_tag_vlan);
 
     DEBUG_PRINT("VLAN interface is %s\r\n",vlan_if);
-    strncpy(ifopts.ifr_name, vlan_if,sizeof DEFAULT_IF);
+    strncpy(ifopts.ifr_name, vlan_if, strlen(vlan_if));
     ioctl(socket_fd, SIOCGIFFLAGS, &ifopts);
     ifopts.ifr_flags |= IFF_PROMISC;
     ioctl(socket_fd, SIOCSIFFLAGS, &ifopts);

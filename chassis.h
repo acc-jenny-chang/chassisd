@@ -22,7 +22,7 @@
 
 #include "chassis_bpdu.h"
 
-#define VERSION_STRING "chassis-0.0.0.10R0B"
+#define VERSION_STRING "chassis-0.0.0.11R0B"
 
 #define BACKPLANE_VERSION 1
 
@@ -200,6 +200,13 @@ enum port_5389_id{
     PORT_8_FC3=5
 };
 
+#define DIAG_STATUS_SUCCESS     0
+#define DIAG_STATUS_FAILURE     -1
+
+#define VLAN_ITEM 1
+#define TOPOLOGY_ITEM 2
+#define ALL_ITEM 999
+
 typedef struct {
        unsigned int us_card_number;
 	unsigned char ipaddress[4];
@@ -217,7 +224,7 @@ typedef struct {
        int status;
        int topology_type;
        int internal_tag_vlan;
-       int inetrnal_untag_vlan;
+       int internal_untag_vlan;
        CTPM_T ctpm;
        int local_Master[4];
 }CHASSIS_DATA_T;

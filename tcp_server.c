@@ -1776,9 +1776,9 @@ int line = 1, number = 1;
 
 	if (file_name == NULL || delim == NULL || out_string_buf == NULL || buf_max_len != MAXIMUM_BUFFER_LENGTH)
 		return -1;
-	if (string_line < 1 || string_number < 1)
+	if (string_line < 1 || string_number < 1){
 		return -2;
-
+	}
 	memset(out_string_buf, 0, buf_max_len);
 	if ((filep = fopen(file_name, "r")) == NULL)
 	{
