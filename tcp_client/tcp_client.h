@@ -53,6 +53,7 @@
 #define ERROR_COMMAND      FF
 
 #define MAXIMUM_MICRO_SERVER_CARD_NUMBER 48
+#define MAXIMUM_LINE_SERVER_CARD_NUMBER 32
 
 #if (ONLP>0)
 #define CONFIG_US_CARD_NUMBER "/usr/sbin/us_card_number"

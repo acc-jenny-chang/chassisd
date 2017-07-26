@@ -93,6 +93,7 @@ int chassis_config_port(long state, long  pid);
 void chassis_state_to_string(unsigned long state, char** res);
 int chassis_set_us_card_number_of_switch_board(void);
 static int chassis_diag_function_delete_temporary_file(void);
+int chassis_reset_cpld(void);
 int chassis_initial_spi(void);
 int chassis_initial_phy(void);
 int chassis_set_serdesmode(void);
@@ -1052,6 +1053,26 @@ int chassis_config_fc_stp(int status)
     fflush(stdout);
     return 0;
 }
+
+int chassis_reset_cpld(void)
+{
+    int ret =0;
+    char buf[MAXIMUM_BUFFER_LENGTH]={0};
+    
+    sprintf(buf, "i2cset -f -y 0 0x76 0x0 0x4;i2cset -y -f 0 0x60 0x9 0x9;usleep 200000;i2cset -y -f 0 0x60 0x9 0xb");
+    ret = system(buf);
+    if (ret != 0)
+    {
+        printf("Reset CPLD (%d): Error!\r\n", ret);
+        fflush(stdout);
+        return ret;
+    }
+    printf("Reset CPLD Success!\r\n");
+    fflush(stdout);
+    
+    return ret;
+}
+
 int chassis_initial_spi(void)
 {
     int ret =0;
