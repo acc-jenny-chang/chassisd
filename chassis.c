@@ -1611,6 +1611,9 @@ int main(int argc, char **_argv)
 
     	TST(netif_utils_netsock_init() == 0, -1);
 
+        /* Reset CPLD first, let bcm5396/bcm5389  return to default value*/
+        chassis_reset_cpld();
+        
         /* initial SPI first, need use SPI to control bcm5396/bcm5389 */
         chassis_initial_spi();
         
