@@ -71,6 +71,20 @@ int udp_server_do_shutdown_mgr_shutdown_linecard_local(unsigned int command, cha
 int udp_server_do_parse_udp(char* packet, int length);
 static void upd_server_packet_recev(uint32_t events, struct epoll_event_handler *h);
 
+static void bpdu_dump_packet(const unsigned char *buf, int cc);
+
+static void bpdu_dump_packet(const unsigned char *buf, int cc)
+{
+	int i, j;
+	for (i = 0; i < cc; i += 16) {
+		for (j = 0; j < 16 && i + j < cc; j++)
+			printf(" %02x", buf[i + j]);
+		printf("\n\r");
+	}
+	printf("\n\r");
+	fflush(stdout);
+}
+
 int udp_server_do_system_command(unsigned int command, char* params)
 {
 #if 1
@@ -358,6 +372,7 @@ upd_server_recev(int fd)
                         length= sizeof(struct udp_packet_command_header) + header.length;
                         memcpy(mesg,&header,sizeof(struct udp_packet_command_header));
                         memcpy(mesg+sizeof(struct udp_packet_command_header),&chassis_information.ctpm,sizeof(CTPM_T));
+                        /*bpdu_dump_packet(mesg,length);*/
                         sendto(fd,mesg,length,0,(struct sockaddr *)&remaddr,sizeof(remaddr));
                         DEBUG_PRINT("chassis master:%d:%d:%d:%d\n\r",
                             chassis_information.local_Master[0],

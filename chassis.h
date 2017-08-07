@@ -22,7 +22,7 @@
 
 #include "chassis_bpdu.h"
 
-#define VERSION_STRING "chassis-0.0.0.12R0B"
+#define VERSION_STRING "chassis-0.0.0.13R0B"
 
 #define BACKPLANE_VERSION 1
 

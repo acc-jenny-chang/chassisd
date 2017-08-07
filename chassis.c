@@ -115,8 +115,15 @@ static void chassis_remove_pidfile(void)
 
 static void chassis_signal_exit(int sig)
 {
+    int us_number = chassis_information.us_card_number;
+    
     /* Enter Block status*/
     chassis_bpdu_enter_block(&(chassis_information.ctpm));
+
+    /* IF I am root LC, need to annouce to FC */
+    if(us_number==chassis_information.ctpm.rootLCPortId)    
+        chassis_bpdu_tx_info_bpdu(BPDU_TYPE_FC_CHANGE);
+    
     /*close tcp and udp socket*/
     udp_client_close_socket();
     upd_server_close(udp_sock);
@@ -422,8 +429,6 @@ static int chassis_validate_vlan_group(void)
     int ret = -1;
     int i;
     char buffer[MAXIMUM_BUFFER_LENGTH]= {0},buf[MAXIMUM_BUFFER_LENGTH]={0};
-    //char internal_tag_vlan[]={0x0, 0x0, 0x0, 0x0, 0x0, 0x7f, 0x7f, 0xc1};
-    //char internal_untag_vlan[]={0x0, 0x0, 0x0, 0xff, 0xff, 0xff, 0xff, 0xc1};
     
     if (chassis_diag_function_delete_temporary_file() != 0)
             return -99;
@@ -584,8 +589,7 @@ int chassis_validate_vlan_conifg(void)
         
         memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
         sprintf(buffer,"bcm5396 -r 0x%x -p 0x34 -l 2 | grep Data | awk '{print $3 $4 \" \" $5}' > %s", i, DIAG_DEFAULT_INFORMATIN_FILE);
-        system(buffer);
-        //system("cat /tmp/.accton_diag_test_message.txt");        
+        system(buffer);   
         ret = tcp_server_diag_function_search_string(DIAG_DEFAULT_INFORMATIN_FILE, " ", buf, MAXIMUM_BUFFER_LENGTH, 1, 1);
         if (ret!= 0)
         {
@@ -1059,7 +1063,7 @@ int chassis_reset_cpld(void)
     int ret =0;
     char buf[MAXIMUM_BUFFER_LENGTH]={0};
     
-    sprintf(buf, "i2cset -f -y 0 0x76 0x0 0x4;i2cset -y -f 0 0x60 0x9 0x9;usleep 200000;i2cset -y -f 0 0x60 0x9 0xb");
+    sprintf(buf, "i2cset -f -y 0 0x76 0x0 0x4;i2cset -y -f 0 0x60 0x9 0x9;usleep 20000;i2cset -y -f 0 0x60 0x9 0xb");
     ret = system(buf);
     if (ret != 0)
     {
@@ -1069,6 +1073,8 @@ int chassis_reset_cpld(void)
     }
     printf("Reset CPLD Success!\r\n");
     fflush(stdout);
+
+    chassis_bpdu_enter_block(&(chassis_information.ctpm));
     
     return ret;
 }
@@ -1191,7 +1197,7 @@ int chassis_check_master_fc(CTPM_T* this)
     {          
         for (j=i*4+33;j<33+(i+1)*4;j++)
         {
-            if(this->chassis_exist[j-1]>0)
+            if(this->chassis_exist[j-1].age>0)
             {
                 if(root_id==j)
                 {
@@ -1611,9 +1617,6 @@ int main(int argc, char **_argv)
 
     	TST(netif_utils_netsock_init() == 0, -1);
 
-        /* Reset CPLD first, let bcm5396/bcm5389  return to default value*/
-        chassis_reset_cpld();
-        
         /* initial SPI first, need use SPI to control bcm5396/bcm5389 */
         chassis_initial_spi();
         
@@ -1622,7 +1625,10 @@ int main(int argc, char **_argv)
         
         /*open config file*/
         chassis_parse_config_file(CONFIG_FILENAME);
-      
+
+        /* Reset CPLD first, let bcm5396/bcm5389  return to default value and enter block mode*/
+        chassis_reset_cpld();
+        
         /* Initial IP Address */
         if(chassis_initial_ip()!=0)
         {

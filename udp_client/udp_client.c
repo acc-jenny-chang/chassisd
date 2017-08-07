@@ -29,7 +29,7 @@
 #define VLAN_INTERNAL_INTERFACE 1
 #define THERMAL_PLAN 1
 
-#define VERSION_STRING "chassis-0.0.0.11R0B"
+#define VERSION_STRING "chassis-0.0.0.13R0B"
 
 #define MAXIMUM_MICRO_SERVER_CARD_NUMBER 48
 
@@ -145,6 +145,13 @@ typedef struct prio_vector_t {
   PORT_ID   bridge_port;
 } PRIO_VECTOR_T;
 
+
+typedef struct bridge_exit
+{
+  unsigned char    age;
+  BRIDGE_ID        id;
+} BRIDGE_EXIST;
+
 typedef struct ctpm_t {
   PORT_ID       port;
 
@@ -168,7 +175,8 @@ typedef struct ctpm_t {
   unsigned long         Topo_Change_Count;     /* 14.8.1.1.3.c */
   unsigned char         Topo_Change;           /* 14.8.1.1.3.d */
 
-  char chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];
+  /*char chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];*/
+  BRIDGE_EXIST chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];
 } CTPM_T;
 
 struct udp_packet_command_header{
@@ -179,7 +187,23 @@ struct udp_packet_command_header{
     uint16_t params_length;    
 }__attribute__((packed));
 
+
+int udp_client_diag_function_search_string(char *file_name, char *delim, char *out_string_buf, int buf_max_len, int string_line, int string_number);
+int udp_client_hw_information_init(US_HW_DATA_T* hw_inform);
 int udp_client_dump_ctpm(CTPM_T* this);
+static void bpdu_dump_packet(const unsigned char *buf, int cc);
+
+static void bpdu_dump_packet(const unsigned char *buf, int cc)
+{
+	int i, j;
+	for (i = 0; i < cc; i += 16) {
+		for (j = 0; j < 16 && i + j < cc; j++)
+			printf(" %02x", buf[i + j]);
+		printf("\n\r");
+	}
+	printf("\n\r");
+	fflush(stdout);
+}
 
 int udp_client_hw_information_init(US_HW_DATA_T* hw_inform)
 {
@@ -208,7 +232,7 @@ int udp_client_hw_information_init(US_HW_DATA_T* hw_inform)
 int main(int argc, char**argv)
 {
     int sockfd,n;
-    struct sockaddr_in servaddr,cliaddr;
+    struct sockaddr_in servaddr;//,cliaddr;
     char sendline[BUFFSIZE];
     char recvline[BUFFSIZE];
     struct udp_packet_command_header sender,receiver;
@@ -370,7 +394,7 @@ int main(int argc, char**argv)
                     break;
                 case CTP_INFORMATION_REPLY:
 {
-                    memcpy(&ctp_inform,recvline+sizeof(struct udp_packet_command_header),sizeof(US_HW_DATA_T));
+                    memcpy(&ctp_inform,recvline+sizeof(struct udp_packet_command_header),sizeof(CTPM_T));
                     udp_client_dump_ctpm(&ctp_inform);
 }
                     break;
@@ -568,11 +592,24 @@ int udp_client_dump_ctpm(CTPM_T* this)
     {
         if(i==0) {printf("LC:%3d%3d%3d%3d%3d%3d%3d%3d%3d%3d%3d%3d%3d%3d%3d%3d\n\r   ",j+1,j+2,j+3,j+4,j+5,j+6,j+7,j+8,j+9,j+10,j+11,j+12,j+13,j+14,j+15,j+16); }
         if(i==32) {j=0;printf("FC:%3d%3d%3d%3d%3d%3d%3d%3d\n\r   ",j+1,j+2,j+3,j+4,j+5,j+6,j+7,j+8); }
-        if(ctpm->chassis_exist[i]>=1) printf("  Y");
+        if(ctpm->chassis_exist[i].age>=1) printf("  Y");
         else if(ctpm->admin_state==1)printf("  N");
-        else printf("  -");      
+        else printf("  -");
         if(i%32==30) printf("\n");
+        /*
+        udp_client_id_to_str((htons(ctpm->chassis_exist[i].id.prio)&0x00FF),card);  
+        printf("              chassis : (%d) %s %02x:%02x:%02x:%02x:%02x:%02x\n\r",
+        ctpm->chassis_exist[i].age,
+        card,
+        ctpm->chassis_exist[i].id.addr[0],
+        ctpm->chassis_exist[i].id.addr[1],
+        ctpm->chassis_exist[i].id.addr[2],
+        ctpm->chassis_exist[i].id.addr[3],
+        ctpm->chassis_exist[i].id.addr[4],
+        ctpm->chassis_exist[i].id.addr[5]);        */
     }
+    /*printf("\nDump\n\r");
+    bpdu_dump_packet(ctpm->chassis_exist,sizeof(BRIDGE_EXIST)*MAXIMUM_MICRO_SERVER_CARD_NUMBER);*/
     printf("\nEND\n\r");
     return 0;
 }

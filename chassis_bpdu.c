@@ -84,6 +84,8 @@ int chassis_bpdu_in_rx_lc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
 int chassis_bpdu_in_clear_chassis_member(CTPM_T* ctpm);
 int chassis_bpdu_in_update_chassis_member(RSTP_BPDU_T* bpdu, CTPM_T* ctpm);
 int chassis_bpdu_in_dec_chassis_member(CTPM_T* ctpm);
+int _chassis_bpdu_select_new_root_lc(RSTP_BPDU_T* bpdu, CTPM_T* ctpm);
+int chassis_bpdu_select_new_root_lc(CTPM_T* ctpm, int old_root_lc_id);
     
 void chassis_bpdu_clear_root_fc(CTPM_T*  this);
 void chassis_bpdu_clear_designed_lc(CTPM_T*  this);
@@ -275,7 +277,8 @@ int chassis_bpdu_initial(CTPM_T * ctpm, int us_number, int state)
     ctpm->Topo_Change_Count = 0 ;
     ctpm->Topo_Change = 0;
 
-    ctpm->chassis_exist[us_number-1]=5*DEFAULT_FORWARDDELAY+1;
+    ctpm->chassis_exist[us_number-1].age=5*DEFAULT_FORWARDDELAY+1;
+    memcpy(&ctpm->chassis_exist[us_number-1].id, &ctpm->BrId,sizeof(BRIDGE_ID));
     chassis_bpdu_in_dump_ctpm();
     return 0;
 }
@@ -346,9 +349,10 @@ int chassis_bpdu_in_clear_chassis_member(CTPM_T* ctpm)
 {
     int us_number = chassis_information.us_card_number;
     
-    memset(ctpm->chassis_exist,0,MAXIMUM_MICRO_SERVER_CARD_NUMBER);    
-    ctpm->chassis_exist[us_number-1]=5*DEFAULT_FORWARDDELAY+1;
-
+    memset(ctpm->chassis_exist,0,MAXIMUM_MICRO_SERVER_CARD_NUMBER*sizeof(BRIDGE_EXIST));    
+    ctpm->chassis_exist[us_number-1].age=5*DEFAULT_FORWARDDELAY+1;
+    memcpy(&ctpm->chassis_exist[us_number-1].id, &ctpm->BrId,sizeof(BRIDGE_ID));
+    
     return 0;
 }
 
@@ -360,10 +364,11 @@ int chassis_bpdu_in_update_chassis_member(RSTP_BPDU_T* bpdu, CTPM_T* ctpm)
     for(i=0;i<MAXIMUM_MICRO_SERVER_CARD_NUMBER;i++)
     {
         if(i==(us_number-1)) continue;
-        else if(bpdu->chassis_exist[i]>=1&&ctpm->chassis_exist[i]<bpdu->chassis_exist[i]) 
-            ctpm->chassis_exist[i]=bpdu->chassis_exist[i];
+        else if(bpdu->chassis_exist[i].age>=1&&ctpm->chassis_exist[i].age<bpdu->chassis_exist[i].age) {
+            ctpm->chassis_exist[i].age=bpdu->chassis_exist[i].age;
+            memcpy(&ctpm->chassis_exist[i].id,&bpdu->chassis_exist[i].id,sizeof(BRIDGE_EXIST));
+        }
     }
-
     
     return 0;
 }
@@ -375,13 +380,44 @@ int chassis_bpdu_in_dec_chassis_member(CTPM_T* ctpm)
     
     for(i=0;i<MAXIMUM_MICRO_SERVER_CARD_NUMBER;i++)
     {
-        if(i==(us_number-1)) ctpm->chassis_exist[i]=5*DEFAULT_FORWARDDELAY+1;
-        else if(ctpm->chassis_exist[i]>=1)
-            ctpm->chassis_exist[i]=ctpm->chassis_exist[i]-1;
+        if(i==(us_number-1)) ctpm->chassis_exist[i].age=5*DEFAULT_FORWARDDELAY+1;
+        else if(ctpm->chassis_exist[i].age>=1)
+            ctpm->chassis_exist[i].age=ctpm->chassis_exist[i].age-1;
     }
 
     
     return 0;
+}
+
+int _chassis_bpdu_select_new_root_lc(RSTP_BPDU_T* bpdu, CTPM_T* ctpm)
+{   
+    int old_root_lc_id=0;
+    if(bpdu!=NULL)
+        old_root_lc_id = bpdu->body.bridge_id[1];
+    
+    return chassis_bpdu_select_new_root_lc(ctpm, old_root_lc_id);    
+}
+
+int chassis_bpdu_select_new_root_lc(CTPM_T* ctpm, int old_root_lc_id)
+{
+    int us_number = chassis_information.us_card_number;
+    int i;
+
+    ctpm->chassis_exist[old_root_lc_id].age = 0;
+        
+    for(i=0;i<MAXIMUM_LINE_SERVER_CARD_NUMBER;i++)
+    {
+        if(i==(us_number-1)) continue;
+        else if(ctpm->chassis_exist[i].age>=3){
+            ctpm->rootLCPortId = i;
+            ctpm->rootPrio.design_port= i;
+            memcpy(&ctpm->rootPrio.design_bridge,&ctpm->chassis_exist[i].id,8);
+
+            return 0;
+        }
+    }    
+
+    return -1;
 }
 
 int chassis_bpdu_in_update_lc_root(RSTP_BPDU_T* bpdu)
@@ -392,7 +428,7 @@ int chassis_bpdu_in_update_lc_root(RSTP_BPDU_T* bpdu)
     CTPM_T* ctpm = &chassis_information.ctpm;
     unsigned long root_path_cost;
 
-    if((root_id>0)&&(bpdu->chassis_exist[root_id-1]>0))
+    if((root_id>0)&&(bpdu->chassis_exist[root_id-1].age>0))
     {
         if((root_id<ctpm->rootPortId)||(ctpm->rootPortId==0))
         {
@@ -403,7 +439,7 @@ int chassis_bpdu_in_update_lc_root(RSTP_BPDU_T* bpdu)
             memcpy(&ctpm->rootPrio.root_bridge,&bpdu->body.root_id,8);         
         }
     }
-    if((dbridge_id>0)&&(bpdu->chassis_exist[dbridge_id-1]>0))
+    if((dbridge_id>0)&&(bpdu->chassis_exist[dbridge_id-1].age>0))
     {
         if((bpdu->hdr.bpdu_type==BPDU_TYPE_HELLO)||(dbridge_id<ctpm->rootLCPortId)||(ctpm->rootLCPortId==0))
         {
@@ -426,15 +462,19 @@ int chassis_bpdu_lc_sync_to_hello(RSTP_BPDU_T* bpdu)
     CTPM_T* ctpm = &chassis_information.ctpm;
     unsigned short ori_dbridge_id=htons(ctpm->rootPrio.design_bridge.prio)&0x00FF;
     unsigned int ori_root_lc = ctpm->rootLCPortId;
+
+    unsigned short my_dbridge_id=htons(ctpm->BrId.prio)&0x00FF;
+    
     /* If Hello packet's Root LC is not My record, it shall try to update*/
-    if((dbridge_id>0 &&dbridge_id!=ori_dbridge_id)&&(bpdu->chassis_exist[dbridge_id-1]>0))
+    if((dbridge_id>0 &&dbridge_id!=ori_dbridge_id)&&(bpdu->chassis_exist[dbridge_id-1].age>0))
     {   
         ctpm->rootLCPortId = dbridge_id;
         ctpm->rootPrio.design_port= dbridge_id;        
         memcpy(&ctpm->rootPrio.design_bridge,&bpdu->body.bridge_id,8);
         
-        /*If I am root LC previous and i'm not now, i need to change forwarding */
-        if(ori_root_lc==ori_dbridge_id)
+        /* If I am root LC previous and i'm not now, i need to change forwarding */
+        /* If I am backup LC before, but i am ROOT LC now, I change to Root LC and re-enter forwarding*/
+        if(ori_root_lc==ori_dbridge_id || my_dbridge_id == dbridge_id)
         {
             chassis_bpdu_enter_forwarding(ctpm);
         }
@@ -452,7 +492,7 @@ int chassis_bpdu_in_update_fc_designated(RSTP_BPDU_T* bpdu)
     unsigned long root_path_cost;
     unsigned char forwarding = ((bpdu_t->body.flags&0x20))>>5;
 
-    if((root_id>0)&&(bpdu->chassis_exist[root_id-1]>0))
+    if((root_id>0)&&(bpdu->chassis_exist[root_id-1].age>0))
     {
         if((forwarding==1)||(root_id<ctpm->rootPortId)||(ctpm->rootPortId==0))
         {
@@ -463,7 +503,7 @@ int chassis_bpdu_in_update_fc_designated(RSTP_BPDU_T* bpdu)
             memcpy(&ctpm->rootPrio.root_bridge,&bpdu->body.root_id,8);       
         }
     }
-    if((dbridge_id>0)&&(bpdu->chassis_exist[dbridge_id-1]>0))
+    if((dbridge_id>0)&&(bpdu->chassis_exist[dbridge_id-1].age>0))
     {
         if((dbridge_id<ctpm->rootLCPortId)||(ctpm->rootLCPortId==0))
         {
@@ -532,17 +572,18 @@ int chassis_bpdu_in_rx_fc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
         }
         else if(ctpm->state==STATE_FORWARDING)
         {
+            chassis_bpdu_in_update_chassis_member(bpdu,ctpm);
             if(bpdu->hdr.bpdu_type==BPDU_TYPE_LC_CHANGE)
             {
+                chassis_bpdu_tx_info_bpdu(BPDU_TYPE_LC_CHANGE);
                 ctpm->timeSince_Topo_Change =0;
                 ori_dbridge_id=htons(ctpm->BrId.prio)&0x00FF;
-                if((ctpm->rootLCPortId!=ori_dbridge_id)&&(ctpm->chassis_exist[ori_dbridge_id]>=1)) ctpm->chassis_exist[ctpm->rootLCPortId]=0;
+                if((ctpm->rootLCPortId!=ori_dbridge_id)&&(ctpm->chassis_exist[ori_dbridge_id].age>=1)) ctpm->chassis_exist[ctpm->rootLCPortId].age=0;
                 chassis_bpdu_enter_block(ctpm);
-                //usleep(DEFAULT_INTERVAL_TIME*5*chassis_information.us_card_number/2);
                 return 0;
             }
-           chassis_bpdu_in_update_chassis_member(bpdu,ctpm);
-            if(bpdu->hdr.bpdu_type==BPDU_TYPE_HELLO)
+           
+            else if(bpdu->hdr.bpdu_type==BPDU_TYPE_HELLO)
             {
                 ctpm->timeSince_Topo_Change =0;
                 dbridge_id=bpdu_t->body.bridge_id[1];
@@ -563,7 +604,7 @@ int chassis_bpdu_in_rx_fc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
                 else
                     chassis_bpdu_tx_info_bpdu(BPDU_TYPE_REPLY);
             }
-            if(bpdu->hdr.bpdu_type==BPDU_TYPE_CONFIG)
+            else if(bpdu->hdr.bpdu_type==BPDU_TYPE_CONFIG)
                 chassis_bpdu_tx_info_bpdu(BPDU_TYPE_REPLY);
         }
     }
@@ -580,6 +621,7 @@ int chassis_bpdu_in_rx_lc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
     CTPM_T* ctpm = &chassis_information.ctpm;
     unsigned short dbridge_id;
     unsigned short ori_dbridge_id;
+    unsigned short ori_root_id;
     unsigned short root_id;
     unsigned short my_id;
 
@@ -616,8 +658,15 @@ int chassis_bpdu_in_rx_lc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
                 ctpm->timeSince_Topo_Change = 0;
                 dbridge_id=bpdu_t->body.bridge_id[1];
                 ori_dbridge_id=htons(ctpm->rootPrio.design_bridge.prio)&0x00FF;
+                ori_root_id=htons(ctpm->rootPrio.root_bridge.prio)&0x00FF;
                 root_id=bpdu_t->body.root_id[1];
                 my_id=htons(ctpm->BrId.prio)&0x00FF;
+
+                /* Root LC have change, but Root FC not change */
+                if(dbridge_id!=ori_dbridge_id&& root_id==ori_root_id)
+                {
+                    chassis_bpdu_lc_sync_to_hello(bpdu);
+                }                
                 /* I am backup FC, receive Hello packet from Designated LC and Reply HELLO packet to LC, let it know i am exist*/
                 if(dbridge_id==ori_dbridge_id&& root_id!=my_id){
 #ifdef PACKET_DEBUG                    
@@ -625,10 +674,39 @@ int chassis_bpdu_in_rx_lc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, u
 #endif
                     chassis_bpdu_tx_info_bpdu(BPDU_TYPE_HELLO);
                     }
+                
             }
-            if(bpdu->hdr.bpdu_type==BPDU_TYPE_CONFIG)
+            else if(bpdu->hdr.bpdu_type==BPDU_TYPE_CONFIG)
             {
                 chassis_bpdu_tx_info_bpdu(BPDU_TYPE_REPLY);
+            }
+            else if(bpdu->hdr.bpdu_type==BPDU_TYPE_FC_CHANGE)
+            {
+                root_id=bpdu_t->body.root_id[1];
+                my_id=htons(ctpm->BrId.prio)&0x00FF;                
+                /* Repeat select another LC to be Root LC, and annouce to everyone */
+                if(root_id ==my_id)
+                {
+                    if(_chassis_bpdu_select_new_root_lc(bpdu,ctpm)==0)
+                    {
+                        chassis_bpdu_tx_info_bpdu(BPDU_TYPE_HELLO);
+                    }
+                    else 
+                    {
+                        chassis_bpdu_enter_block(ctpm);
+                        return 0;
+                    }
+                }
+            }
+            else if(bpdu->hdr.bpdu_type==BPDU_TYPE_LC_CHANGE)
+            {
+                root_id=bpdu_t->body.root_id[1];
+                my_id=htons(ctpm->BrId.prio)&0x00FF;            
+                if(root_id !=my_id)
+                {
+                    chassis_bpdu_enter_block(ctpm);
+                    return 0;
+                }
             }
         }        
     }
@@ -807,8 +885,7 @@ chassis_bpdu_tx_info_bpdu(unsigned char bpdu_type)
 
     chassis_bpdu_in_dec_chassis_member(ctpm);
 
-    memcpy(bpdu_t.chassis_exist,ctpm->chassis_exist,MAXIMUM_MICRO_SERVER_CARD_NUMBER);
-
+    memcpy(bpdu_t.chassis_exist,ctpm->chassis_exist,MAXIMUM_MICRO_SERVER_CARD_NUMBER*sizeof(BRIDGE_EXIST));
     
     memcpy(sendline,&bpdu_t,size);
     bpdu_client_send(mac,sendline,size);
@@ -1351,7 +1428,7 @@ static int chassis_bpdu_ctp_ctpm_iterate_machines (CTPM_T* this)
             /* LC need wait FC enter forwarding first, let backup FC block ports*/
             else
             {
-                if(this->timeSince_Topo_Change<(Default_ForwardDelay*2+1)){
+                if(this->timeSince_Topo_Change<(unsigned)(Default_ForwardDelay*2+1)){
                     chassis_bpdu_tx_info_bpdu(BPDU_TYPE_CONFIG);
                     this->timeSince_Topo_Change++;
                 }                
@@ -1366,8 +1443,16 @@ static int chassis_bpdu_ctp_ctpm_iterate_machines (CTPM_T* this)
             {
                 if(this->timeSince_Topo_Change>Default_MaxAge)
                 {
-                    chassis_bpdu_enter_block(this);
-                    chassis_bpdu_tx_info_bpdu(BPDU_TYPE_LC_CHANGE);
+                    if(chassis_bpdu_select_new_root_lc(this,this->rootLCPortId)==0 )
+                    {
+                        this->timeSince_Topo_Change=0;
+                        chassis_bpdu_tx_info_bpdu(BPDU_TYPE_HELLO);                                                
+                    }
+                    else
+                    {
+                        chassis_bpdu_enter_block(this);
+                        chassis_bpdu_tx_info_bpdu(BPDU_TYPE_LC_CHANGE);
+                    }
                 }
                 else
                 {
@@ -1375,7 +1460,7 @@ static int chassis_bpdu_ctp_ctpm_iterate_machines (CTPM_T* this)
                     this->timeSince_Topo_Change++;
                 }
             }
-            else if(this->timeSince_Topo_Change>Default_MaxAge){
+            else if(this->timeSince_Topo_Change>Default_MaxAge*DEFAULT_FORWARDDELAY){
                 /*lost hello packet, need find new root fc/designed lc*/
                 chassis_bpdu_enter_block(this);
             }

@@ -56,6 +56,7 @@
 char DEFAULT_INTERFACE[INTERFACE_NAME_LENGTH];
 
 #define MAXIMUM_MICRO_SERVER_CARD_NUMBER 48
+#define MAXIMUM_LINE_SERVER_CARD_NUMBER 32
 
 #define MAXIMUM_BPDU_INTERVAL_SIZE 1024
 
@@ -101,6 +102,17 @@ char DEFAULT_INTERFACE[INTERFACE_NAME_LENGTH];
 #define DEFAULT_MAXAGE  15
 #define DEFAULT_FORWARDDELAY 3
 #define DEFAULT_MESSAGEAGE  1
+
+typedef struct bridge_id
+{
+  unsigned short    prio;
+  unsigned char     addr[6];
+} BRIDGE_ID;
+typedef struct bridge_exit
+{
+  unsigned char    age;
+  BRIDGE_ID        id;
+} BRIDGE_EXIST;
 
 typedef struct mac_header_t {
   unsigned char dst_mac[6];
@@ -148,7 +160,7 @@ typedef struct rstp_bpdu_t {
   BPDU_HEADER_T hdr;
   BPDU_BODY_T   body;
   unsigned char ver_1_len[2];
-  char chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];
+  BRIDGE_EXIST chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];
 } RSTP_BPDU_T;
 
 struct ctp_header {
@@ -202,12 +214,6 @@ typedef enum {
   CTP_ENABLED,
 } UID_CTP_MODE_T;
 
-typedef struct bridge_id
-{
-  unsigned short    prio;
-  unsigned char     addr[6];
-} BRIDGE_ID;
-
 typedef unsigned short  PORT_ID;
 
 typedef struct prio_vector_t {
@@ -241,7 +247,8 @@ typedef struct ctpm_t {
   unsigned long         Topo_Change_Count;     /* 14.8.1.1.3.c */
   unsigned char         Topo_Change;           /* 14.8.1.1.3.d */
 
-  char chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];
+  /*char chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];*/
+  BRIDGE_EXIST chassis_exist[MAXIMUM_MICRO_SERVER_CARD_NUMBER];
 } CTPM_T;
 
 
