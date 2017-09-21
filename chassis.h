@@ -22,7 +22,7 @@
 
 #include "chassis_bpdu.h"
 
-#define VERSION_STRING "chassis-0.0.0.13R0B"
+#define VERSION_STRING "chassis-0.0.0.15R0B"
 
 #define BACKPLANE_VERSION 1
 
@@ -171,7 +171,11 @@ enum port_5396_id{
     PORT_16_LC6=3,
     PORT_16_LC7=2,
     PORT_16_FC=11,
-    PORT_16_RJ45=9   
+    PORT_16_RJ45=9,   
+    PORT_16_PORT8=8,
+    PORT_16_PORT10=10,
+    PORT_16_PORT12=12,
+    PORT_16_PORT13=13
 };
 #else
 /*Ver 0.1 backplane, LC0 and LC1 is reverse*/
@@ -186,8 +190,12 @@ enum port_5396_id{
     PORT_16_LC5=1,
     PORT_16_LC6=2,
     PORT_16_LC7=3,
-    PORT_16_FC=11,
-    PORT_16_RJ45=9   
+    PORT_16_RJ45=9,
+    PORT_16_FC=11,    
+    PORT_16_PORT8=8,
+    PORT_16_PORT10=10,
+    PORT_16_PORT12=12,
+    PORT_16_PORT13=13
 };
 #endif
 
@@ -197,7 +205,9 @@ enum port_5389_id{
     PORT_8_FC0=2,
     PORT_8_FC1=3,
     PORT_8_FC2=4,
-    PORT_8_FC3=5
+    PORT_8_FC3=5,
+    PORT_8_PORT1=1,
+    PORT_8_PORT6=6,
 };
 
 #define DIAG_STATUS_SUCCESS     0

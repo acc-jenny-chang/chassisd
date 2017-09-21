@@ -77,6 +77,7 @@ unsigned short Default_HelloTime=DEFAULT_HELLO_TIME;
 extern CHASSIS_DATA_T chassis_information;
 extern int chassis_config_port(long state, long pid);
 extern int chassis_initial_master_fc(CTPM_T* this);
+extern int chassis_initial_bcm(void);
     
 static int chassis_bpdu_ctp_ctpm_iterate_machines (CTPM_T* this);
 int chassis_bpdu_in_rx_fc_bpdu(int vlan_id, int port_index, RSTP_BPDU_T* bpdu, unsigned int len);
@@ -99,6 +100,10 @@ int chassis_bpdu_update_rx_bpdu_interval(unsigned int slotid, unsigned char type
 void chassis_bpdu_clear_rx_bpdu_interval(void);
 
 int chassis_bpdu_root_lc(void);
+int chassis_bpdu_reset_cpld(unsigned int usec);
+int chassis_bpdu_set_sgmiimode(void);
+int chassis_bpdu_set_slavemode(void);
+int chassis_bpdu_reset_cpld(unsigned int usec);
 
 typedef struct rx_header_t {
     unsigned int slotid;
@@ -107,6 +112,111 @@ typedef struct rx_header_t {
 } RX_HEADER_T;
 
 RX_HEADER_T rx_bpdu[MAXIMUM_BPDU_INTERVAL_SIZE];
+
+
+/*set FC serdes and slave mode*/
+int chassis_bpdu_set_sgmiimode(void)
+{
+    int ret =0;
+    char buf[MAXIMUM_BUFFER_LENGTH]={0};
+    
+    sprintf(buf, "bcm5396 -w 0x20 -p 0x10 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x11 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x12 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x13 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x14 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x15 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x16 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x17 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x18 -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x1a -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x1b -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x1c -v 0x01f0 -l 2;\
+bcm5396 -w 0x20 -p 0x1d -v 0x01f0 -l 2;");
+
+    ret = system(buf);
+    if (ret != 0)
+    {
+        printf("Initial FC Serdes and Slave mode (%d): Error!\r\n", ret);
+        fflush(stdout);
+        return ret;
+    }
+    /*printf("Initial FC Serdes and Slave mode Success!\r\n");*/
+    fflush(stdout);
+    
+    return ret;
+}
+
+int chassis_bpdu_set_slavemode(void)
+{
+    int ret =0;
+    char buf[MAXIMUM_BUFFER_LENGTH]={0};
+    
+    sprintf(buf, "bcm5396 -w 0x20 -p 0x10 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x11 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x12 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x13 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x14 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x15 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x16 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x17 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x18 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1a -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1b -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1c -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1d -v 0x01d1 -l 2;");
+
+    ret = system(buf);
+    if (ret != 0)
+    {
+        printf("Initial FC Serdes and Slave mode (%d): Error!\r\n", ret);
+        fflush(stdout);
+        return ret;
+    }
+    /*printf("Initial FC Serdes and Slave mode Success!\r\n");*/
+    fflush(stdout);
+    
+    return ret;
+}
+
+int chassis_bpdu_reset_cpld(unsigned int usec)
+{
+    int ret =0;
+    char buf[MAXIMUM_BUFFER_LENGTH]={0};
+    
+    sprintf(buf, "i2cset -f -y 0 0x76 0x0 0x4;i2cset -y -f 0 0x60 0x9 0x9;usleep %d;i2cset -y -f 0 0x60 0x9 0xb", usec);
+    ret = system(buf);
+    if (ret != 0)
+    {
+        DEBUG_PRINT("Reset CPLD (%d): Error!\r\n", ret);
+        fflush(stdout);
+        return ret;
+    }
+    DEBUG_PRINT("Reset CPLD Success!\r\n");
+    fflush(stdout);
+
+    /*chassis_bpdu_enter_block(&(chassis_information.ctpm));*/
+    
+    return ret;
+}
+
+
+int chassis_bpdu_block_time(unsigned int usec)
+{
+    //chassis_bpdu_set_sgmiimode();
+    //chassis_config_port(PORT_DISABLED, PORT_16_C1);
+    //chassis_config_port(PORT_DISABLED, PORT_16_C2);
+    //chassis_bpdu_config_all_port(PORT_DISABLED);
+    //usleep(usec);
+    //chassis_config_port(PORT_FORWARDING, PORT_16_C1);
+    //chassis_config_port(PORT_FORWARDING, PORT_16_C2);
+    //chassis_bpdu_config_all_port(PORT_FORWARDING);
+    //chassis_bpdu_set_slavemode();    
+    chassis_bpdu_reset_cpld(usec);
+    chassis_initial_bcm();
+    //usleep(usec*10);
+    return 0;
+}
 
 int chassis_bpdu_search_rx_bpdu_interval(unsigned int slotid, unsigned char type)
 {
@@ -1399,7 +1509,18 @@ static int chassis_bpdu_ctp_ctpm_iterate_machines (CTPM_T* this)
     {
        case STATE_BLOCK:
             if(33<=us_number&&us_number<=48)
-                chassis_bpdu_tx_info_bpdu(BPDU_TYPE_CONFIG);
+            {
+                this->timeSince_Topo_Change++;
+                if(this->timeSince_Topo_Change<Default_MaxAge)
+                {
+                    chassis_bpdu_tx_info_bpdu(BPDU_TYPE_CONFIG);
+                }
+                else
+                {
+                    chassis_bpdu_block_time(DEFAULT_INTERVAL_TIME);
+                    this->timeSince_Topo_Change = 0;
+                }                
+            }
             break;
        case STATE_LISTENING:
             if(this->timeSince_Topo_Change>Default_ForwardDelay){

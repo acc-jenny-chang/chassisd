@@ -105,6 +105,9 @@ int chassis_config_multicast(int us_number);
 
 int chassis_check_master_fc(CTPM_T* this);
 int chassis_initial_master_fc(CTPM_T* this);
+int chassis_initial_vlan(void);
+int chassis_initial_bcm(void);
+
     
 static void chassis_remove_pidfile(void)
 {
@@ -129,8 +132,10 @@ static void chassis_signal_exit(int sig)
     upd_server_close(udp_sock);
     //tcp_server_close(tcp_sock);
     bpdu_close_socket();
-    chassis_remove_pidfile();
-   
+    /* disable bcm5396/5389*/
+    printf("Disable BCM5396/5389 !");
+    system("i2cset -f -y 0 0x76 0x0 0x4;i2cset -y -f 0 0x60 0x9 0x9;");    
+    chassis_remove_pidfile();  
     _exit(EXIT_SUCCESS);
 }
 /*
@@ -158,6 +163,8 @@ static void chassis_write_pidfile(void)
 	signal(SIGTERM, chassis_signal_exit);
 	signal(SIGINT, chassis_signal_exit);
 	signal(SIGQUIT, chassis_signal_exit);
+       signal(SIGKILL, chassis_signal_exit);
+       signal(SIGSTOP, chassis_signal_exit);
 	f = fopen(pidfile, "w");
 	if (!f) {
 		DEBUG_PRINT("Cannot open pidfile `%s'", pidfile);
@@ -656,7 +663,184 @@ int chassis_diag_initial_testing(int diag_item)
 
     return ret;
 }
+
+
+int chassis_initial_bcm(void)
+{
+    int us_number = chassis_information.us_card_number;
+    int ret;
+    char buf[MAXIMUM_BUFFER_LENGTH]={0};
+
     
+    ret |= chassis_initial_vlan();
+
+    //initial_phy();
+    sprintf(buf, "bcm5396 -w 0x8 -p 0x8a -l 2 -v 0x3e1");
+    ret = system(buf);
+    if (ret != 0)
+    {
+        DEBUG_PRINT("Initial FC PHY (%d): Error!\r\n", ret);
+        fflush(stdout);
+    }
+    DEBUG_PRINT("Initial FC PHY Success!\r\n");
+    /*Slave Mode*/
+    /*chassis_set_slavemode();*/
+    sprintf(buf, "bcm5396 -w 0x20 -p 0x10 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x11 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x12 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x13 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x14 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x15 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x16 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x17 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x18 -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1a -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1b -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1c -v 0x01d1 -l 2;\
+bcm5396 -w 0x20 -p 0x1d -v 0x01d1 -l 2;");
+
+    ret = system(buf);
+    if (ret != 0)
+    {
+        DEBUG_PRINT("Initial FC Serdes and Slave mode (%d): Error!\r\n", ret);
+        fflush(stdout);
+    }
+    DEBUG_PRINT("Initial FC Serdes and Slave mode Success!\r\n");    
+    /*FC STP*/
+    /*chassis_config_fc_stp(1);*/
+    sprintf(buf, "bcm5396 -w 0x20 -p 0 -v 0x7 -l 1");
+    ret = system(buf);
+    if (ret != 0)
+    {
+            DEBUG_PRINT("Config FC STP (%d): Error!\r\n", ret);
+            fflush(stdout);
+    }
+    DEBUG_PRINT("Config FC STP Success!\r\n");
+    
+    /*PASS*/
+    /*chassis_add_static_arl(us_number);*/
+        sprintf(buf, "bcm5396 -w 0x0 -p 0x4 -l 1 -v 0x10;\
+            bcm5396 -w 0x04 -p 0x4 -l 6 -v %s;\
+            bcm5396 -w 0x10 -p 0x4 -l 6 -v %s;\
+            bcm5396 -w 0x16 -p 0x4 -l 6 -v 0x00004000;",FC1_MULTICAST_ADDRESS,FC1_MULTICAST_ADDRESS);     
+    ret = system(buf);
+    if (ret != 0)
+    {
+        DEBUG_PRINT("Add static entry (%d): Error!\r\n", ret);
+        fflush(stdout);
+    }
+    DEBUG_PRINT("Add static entry Success!\r\n");
+    
+    /*Don't need*/
+    //chassis_config_multicast(us_number);
+    
+    chassis_config_port(PORT_DISABLED, PORT_16_FC);
+    chassis_config_port(PORT_DISABLED, PORT_16_PORT8);
+    chassis_config_port(PORT_DISABLED, PORT_16_PORT10);
+    chassis_config_port(PORT_DISABLED, PORT_16_PORT12);
+    chassis_config_port(PORT_DISABLED, PORT_16_PORT13);
+    chassis_config_port(PORT_FORWARDING, PORT_16_RJ45);
+    chassis_config_port(PORT_FORWARDING, PORT_16_C1);
+    chassis_config_port(PORT_FORWARDING, PORT_16_C2);
+    //chassis_bpdu_enter_block(&(chassis_information.ctpm));
+    //printf("Initial BCM Success (%d)!\n\r", ret);
+
+    return ret;
+}
+
+
+int chassis_initial_vlan(void)
+{
+    int us_number = chassis_information.us_card_number;
+    char buffer[MAXIMUM_BUFFER_LENGTH]= {0};
+    int ret =0;
+    
+    if(us_number>=33&& us_number<=48&&us_number%2==1){
+        memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+        sprintf(buffer, "\
+bcm5396 -w 0x61 -p 0x5 -l 2 -v 0x00%x;\
+bcm5396 -w 0x63 -p 0x5 -l 8 -v 00000000007f7fc1;\
+bcm5396 -w 0x60 -p 0x5 -l 1 -v 0x80;\
+bcm5396 -w 0x61 -p 0x5 -l 2 -v 0x00%x;\
+bcm5396 -w 0x63 -p 0x5 -l 8 -v 000000ffffffffc1;\
+bcm5396 -w 0x60 -p 0x5 -l 1 -v 0x80;",
+                        chassis_information.internal_tag_vlan,
+                        chassis_information.internal_untag_vlan);
+        ret = system(buffer);
+        if (ret != 0)
+        {
+            printf("Initial VLAN GROUP config (%d): Error!\r\n", ret);
+            fflush(stdout);
+            return ret;
+        }
+      
+        memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+        sprintf(buffer,"\
+bcm5396 -w 0x10 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x12 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x14 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x16 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x18 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x1a -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x1c -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x1e -p 0x34 -l 2 -v 0x00%x;",
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan);
+         ret = system(buffer);        
+        if (ret != 0)
+        {
+            printf("Initial VLAN PVID 1 config (%d): Error!\r\n", ret);
+            fflush(stdout);
+            return ret;
+        }
+
+        memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+        sprintf(buffer, "\
+bcm5396 -w 0x20 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x22 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x24 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x26 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x28 -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x2a -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x2c -p 0x34 -l 2 -v 0x00%x;\
+bcm5396 -w 0x2e -p 0x34 -l 2 -v 0x00%x;",
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan,
+                        chassis_information.internal_untag_vlan);
+                        //bcm5396 -w 0x30 -p 0x34 -l 2 -v 0x00%x;");
+        ret = system(buffer);        
+        if (ret != 0)
+        {
+            printf("Initial VLAN PVID 2 config (%d): Error!\r\n", ret);
+            fflush(stdout);
+            return ret;
+        }
+   
+        memset(buffer,0,MAXIMUM_BUFFER_LENGTH);
+        sprintf(buffer, "bcm5396 -w 0x0 -p 0x34 -v 0xe2;");
+        ret = system(buffer);
+        if (ret != 0)
+        {
+            printf("Initial VLAN config (%d): Error!\r\n", ret);
+            fflush(stdout);
+            return ret;
+        }
+       
+    }
+
+    return 0;
+}
 
 int chassis_initial_ip(void)
 {
@@ -925,7 +1109,7 @@ int chassis_config_port(long state, long pid)
     if(us_number%2==0) return -1;
 
     chassis_state_to_string(state,&buff);
-    printf("Config port:%lu, state:%s\n\r",pid,buff );
+    DEBUG_PRINT("Config port:%lu, state:%s\n\r",pid,buff );
 
     if(us_number>=1 && us_number <=32)
     {
@@ -1281,7 +1465,9 @@ int chassis_initial_default_topology(void)
         chassis_config_port(PORT_BLOCKING, PORT_8_FC1);
         chassis_config_port(PORT_BLOCKING, PORT_8_FC2);
         chassis_config_port(PORT_BLOCKING, PORT_8_FC3);
-        */
+        */ 
+        chassis_config_port(PORT_DISABLED, PORT_8_PORT1);
+        chassis_config_port(PORT_DISABLED, PORT_8_PORT6);
         chassis_config_port(PORT_FORWARDING, PORT_8_C1);
         chassis_config_port(PORT_FORWARDING, PORT_8_C2);
         chassis_bpdu_enter_block(&(chassis_information.ctpm));
@@ -1308,6 +1494,11 @@ int chassis_initial_default_topology(void)
         chassis_config_port(PORT_FORWARDING, PORT_16_LC7);
         chassis_config_port(PORT_FORWARDING, PORT_16_FC);
         */
+        chassis_config_port(PORT_DISABLED, PORT_16_FC);
+        chassis_config_port(PORT_DISABLED, PORT_16_PORT8);
+        chassis_config_port(PORT_DISABLED, PORT_16_PORT10);
+        chassis_config_port(PORT_DISABLED, PORT_16_PORT12);
+        chassis_config_port(PORT_DISABLED, PORT_16_PORT13);
         chassis_config_port(PORT_FORWARDING, PORT_16_RJ45);
         chassis_config_port(PORT_FORWARDING, PORT_16_C1);
         chassis_config_port(PORT_FORWARDING, PORT_16_C2);
