@@ -16,7 +16,7 @@ $(TARGET1): $(OBJS)
 $(TARGET1).o: $(TARGET1).c
 	$(CC) $(CFLAGS) -c $< $(INCS)
 
-$(TARGET2):
+$(TARGET2): $(TARGET1)
 	cp -f $(TARGET1) bcm5396 
 
 install:
