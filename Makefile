@@ -24,7 +24,7 @@ WARNINGS := -Wall -Wextra -Wno-missing-field-initializers -Wno-unused-parameter 
 
 all: chassis subdirs
 
-.PHONY: install uninstall clean
+.PHONY: subdirs install subdirs-install generic-install uninstall subdirs-uninstall clean subdirs-clean
 
 OBJ := chassis.o msg.o memutil.o eventloop.o udp_client.o udp_server.o tcp_server.o crc_util.o bpdu.o \
                    packet.o netif_utils.o bpdu.o epoll_loop.o chassis_bpdu.o shutdown_mgr.o
@@ -65,6 +65,16 @@ uninstall: subdirs-uninstall
 	rm -r -f $(DESTDIR)${prefix}/local/accton/parameter/us_card_number
 	rm -r -f $(DESTDIR)${prefix}/local/accton/bin/chassis_accton.conf
 	rm -r -f $(DESTDIR)${prefix}/local/accton/bin/chassis_facebook.conf
+
+generic-install:
+	install -d $(DESTDIR)/usr/local/accton/{bin,parameter}
+	install -m 755 chassis $(DESTDIR)/usr/local/accton/bin
+	install -m 644 chassis.conf $(DESTDIR)/usr/local/accton/bin
+	install -m 755 tcp_client/chassis_agent $(DESTDIR)/usr/local/accton/bin
+	install -m 755 udp_client/chassis_client $(DESTDIR)/usr/local/accton/bin
+	install -m 644 us_card_number $(DESTDIR)/usr/local/accton/parameter
+	install -m 755 spi_user/bcm5389 $(DESTDIR)/usr/sbin
+	install -m 755 spi_user/bcm5396 $(DESTDIR)/usr/sbin
 
 #clean: test-clean
 clean: subdirs-clean
