@@ -1,0 +1,6 @@
+*.o
+chassis
+spi_user/bcm5389
+spi_user/bcm5396
+tcp_client/chassis_agent
+udp_client/chassis_client
