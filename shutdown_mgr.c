@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <syslog.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 
 #include "shutdown_mgr.h"
 
