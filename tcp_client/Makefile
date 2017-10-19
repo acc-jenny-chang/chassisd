@@ -13,7 +13,7 @@ SRC := $(OBJ:.o=.c)
 all: chassis_agent
 
 chassis_agent: ${OBJ}
-	gcc -o chassis_agent ${OBJ} $(LDFLAGS)
+	$(CC) -o chassis_agent ${OBJ} $(LDFLAGS)
 
 #%.o: %.c
 #	$(CC) -c $(CFLAGS) -o $@ $<
